@@ -1,0 +1,12 @@
+{% extends "emails/base_email.html" %}
+{% block title %}Verify your account{% endblock %}
+{% block content %}
+<h2 style="margin:0 0 16px; font-size:18px;">Verify your account</h2>
+<p style="margin:0 0 16px; line-height:1.5;">Hi {% firstof full_name %},</p>
+<p style="margin:0 0 16px; line-height:1.5;">Use the verification code below to activate your account and enable login:</p>
+<div style="margin:24px 0; text-align:center;">
+  <span style="display:inline-block; font-size:32px; letter-spacing:8px; font-weight:bold; color:#4f46e5; background-color:#eef2ff; padding:14px 24px; border-radius:8px;">{% firstof otp_code %}</span>
+</div>
+<p style="margin:0 0 16px; line-height:1.5;">This code expires in {% firstof expiry_minutes %} minutes.</p>
+<p style="margin:0; line-height:1.5; color:#6b7280;">If you did not create an account, you can ignore this email.</p>
+{% endblock %}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Quiz Platform{% endblock %}</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f5f7; font-family:Arial, Helvetica, sans-serif; color:#1f2933;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f5f7; padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px; background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background-color:#4f46e5; padding:20px 32px;">
+              <h1 style="margin:0; font-size:20px; color:#ffffff;">Quiz Platform</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px; background-color:#f9fafb; color:#6b7280; font-size:12px; line-height:1.5;">
+              You&rsquo;re receiving this email because an action was requested for your Quiz Platform account.
+              If this wasn&rsquo;t you, you can safely ignore it.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

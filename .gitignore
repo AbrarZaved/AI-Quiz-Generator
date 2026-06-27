@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.sqlite3
+.env
+.venv/
+venv/
+/staticfiles/
+/media/
+/book_data/volume1/*
+/book_data/volume2/*
+!book_data/volume1/.gitkeep
+!book_data/volume2/.gitkeep
+.celerybeat-schedule
+.DS_Store
+myenv/
