@@ -19,11 +19,14 @@ from .tasks import generate_quiz_task
 
 class QuizViewSet(viewsets.ModelViewSet):
     """Admins: full CRUD + generate. Students: list/retrieve published quizzes."""
-
+    
     def get_queryset(self):
         user = self.request.user
         qs = Quiz.objects.all().prefetch_related("questions")
         if user.is_authenticated and user.is_admin:
+            published = self.request.query_params.get("published")
+            if published is not None:
+                qs = qs.filter(is_published=published.lower() == "true")
             return qs
         # Students only see published + ready quizzes.
         return qs.filter(is_published=True, status=Quiz.Status.READY)
@@ -47,7 +50,8 @@ class QuizViewSet(viewsets.ModelViewSet):
         return QuizTakeSerializer
 
     def perform_create(self, serializer):
-        # Creating a quiz auto-starts AI generation in the background.
+        # Auto-start generation. is_published comes straight from the request
+        # (defaults to False = draft when the admin doesn't send it).
         quiz = serializer.save(
             created_by=self.request.user, status=Quiz.Status.PENDING
         )
@@ -114,6 +118,32 @@ class QuizViewSet(viewsets.ModelViewSet):
         quiz = self.get_object()
         return Response(QuizStatusSerializer(quiz).data)
 
+    @action(detail=True, methods=["post"])
+    def publish(self, request, pk=None):
+        """Publish a generated (ready) quiz so students can see it."""
+        quiz = self.get_object()
+        if quiz.status != Quiz.Status.READY:
+            return Response(
+                {"detail": "Only a fully generated (ready) quiz can be published."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        quiz.is_published = True
+        quiz.save(update_fields=["is_published"])
+        return Response(
+            QuizSerializer(quiz, context=self.get_serializer_context()).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"])
+    def unpublish(self, request, pk=None):
+        """Move a published quiz back to draft (hides it from students)."""
+        quiz = self.get_object()
+        quiz.is_published = False
+        quiz.save(update_fields=["is_published"])
+        return Response(
+            QuizSerializer(quiz, context=self.get_serializer_context()).data,
+            status=status.HTTP_200_OK,
+        )
 
 class QuestionViewSet(viewsets.ModelViewSet):
     """Admin-only CRUD on individual questions (edit answer/options/delete)."""

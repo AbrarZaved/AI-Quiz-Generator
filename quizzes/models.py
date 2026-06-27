@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 
-
+from django.core.validators import FileExtensionValidator
 class Quiz(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -26,6 +26,13 @@ class Quiz(models.Model):
         default=False, help_text="Students only see published + ready quizzes."
     )
     task_id = models.CharField(max_length=255, blank=True)
+    reference_pdf = models.FileField(
+        upload_to="quiz_reference_pdfs/",
+        blank=True,
+        null=True,
+        validators=[FileExtensionValidator(allowed_extensions=["pdf"])],
+        help_text="Optional PDF of previous questions, for reference.",
+    )
     is_published = models.BooleanField(
         default=False, help_text="Students only see published + ready quizzes."
     )

@@ -86,6 +86,7 @@ class QuizSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "reference_pdf",
             "question_count",
             "status",
             "generation_error",
@@ -117,6 +118,7 @@ class QuizCreateSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "reference_pdf",
             "is_published",
         ]
 
@@ -141,10 +143,10 @@ class QuizRegenerateSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "reference_pdf",
             "is_published",
         ]
         extra_kwargs = {field: {"required": False} for field in fields}
-
     def validate_num_questions(self, value):
         if value < 1 or value > 50:
             raise serializers.ValidationError("num_questions must be between 1 and 50.")
