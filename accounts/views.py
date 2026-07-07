@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -14,6 +15,7 @@ from .serializers import (
     ResendOTPSerializer,
     ResetPasswordSerializer,
     SignupSerializer,
+    UpdateProfileSerializer,
     UserSerializer,
     VerifyAccountSerializer,
 )
@@ -44,6 +46,7 @@ def _send_otp_email(user, otp):
     )
 
 
+@extend_schema(tags=["Auth"])
 class SignupView(generics.CreateAPIView):
     """POST email, full_name, password -> create an inactive student and email an OTP."""
 
@@ -69,7 +72,38 @@ class SignupView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED,
         )
 
+from .serializers import (  # add to the existing serializers import
+    StudentRegistrationSerializer,
+)
 
+
+@extend_schema(tags=["Auth"])
+class RegisterStudentView(generics.CreateAPIView):
+    """POST the full 4-step registration payload -> create an inactive student and email an OTP."""
+
+    permission_classes = [AllowAny]
+    serializer_class = StudentRegistrationSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        otp = OTPCode.generate_for(user, OTPCode.Purpose.EMAIL_VERIFICATION)
+        send_otp_email_task.delay(user.id, otp.code, otp.purpose)
+
+        return Response(
+            {
+                "detail": (
+                    "Registration received. We've emailed a 6-digit code to "
+                    "verify the account."
+                ),
+                "email": user.email,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+@extend_schema(tags=["Auth"])
 class VerifyAccountView(APIView):
     """POST email, otp -> activate the account so the user can log in."""
 
@@ -119,6 +153,7 @@ class VerifyAccountView(APIView):
         )
 
 
+@extend_schema(tags=["Auth"])
 class ResendVerificationOTPView(APIView):
     """POST email -> resend the signup verification OTP (if account is unverified)."""
 
@@ -140,6 +175,7 @@ class ResendVerificationOTPView(APIView):
         )
 
 
+@extend_schema(tags=["Auth"])
 class LoginView(TokenObtainPairView):
     """POST email, password -> { access, refresh, user }. Inactive accounts are rejected."""
 
@@ -147,6 +183,7 @@ class LoginView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
 
 
+@extend_schema(tags=["Auth"])
 class MeView(generics.RetrieveAPIView):
     """GET the currently authenticated user."""
 
@@ -157,6 +194,33 @@ class MeView(generics.RetrieveAPIView):
         return self.request.user
 
 
+@extend_schema(
+    tags=["Auth"],
+    summary="Update the current user's profile (partial update)",
+    request=UpdateProfileSerializer,
+    responses={200: UserSerializer},
+)
+class UpdateProfileView(APIView):
+    """PATCH any subset of profile fields for the authenticated user.
+
+    Email and role are immutable through this endpoint.
+    Returns the full user object after the update.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        serializer = UpdateProfileSerializer(
+            instance=request.user,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Auth"])
 class ForgotPasswordView(APIView):
     """POST email -> emails a 6-digit OTP if the account exists."""
 
@@ -179,6 +243,7 @@ class ForgotPasswordView(APIView):
         )
 
 
+@extend_schema(tags=["Auth"])
 class ResetPasswordView(APIView):
     """POST email, otp, new_password -> sets a new password."""
 

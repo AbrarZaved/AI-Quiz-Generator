@@ -16,12 +16,45 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255)
+    profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     role = models.CharField(
         max_length=20, choices=Role.choices, default=Role.STUDENT
     )
 
     # New signups start inactive until their email OTP is verified.
     is_active = models.BooleanField(default=False)
+    class ClassLevel(models.TextChoices):
+        FORM_4 = "4th", "4th Form"
+        FORM_5 = "5th", "5th Form"
+        FORM_6 = "6th", "6th Form"
+        FORM_7 = "7th", "7th Form"
+        FORM_8 = "8th", "8th Form"
+        FORM_9 = "9th", "9th Form"
+        FORM_10 = "10th", "10th Form"
+
+    class PreferredTime(models.TextChoices):
+        MORNING = "morning", "Morning 12:00 Am-02:00PM"
+        AFTERNOON = "afternoon", "Afternoon 10:00 Am-12:00PM"
+        EVENING = "evening", "Evening 12:00 Am-02:00PM"
+
+    # --- Step 1: Student information (full_name + email already exist above) ---
+    contact_number = models.CharField(max_length=32, blank=True)
+    current_school = models.CharField(max_length=255, blank=True)
+
+    # --- Step 2: Parent / guardian information ---
+    parent_full_name = models.CharField(max_length=255, blank=True)
+    parent_email = models.EmailField(blank=True)
+    parent_contact_number = models.CharField(max_length=32, blank=True)
+
+    # --- Step 3: Class selection ---
+    student_class = models.CharField(
+        max_length=8, choices=ClassLevel.choices, blank=True
+    )
+
+    # --- Step 4: Preferred time ---
+    preferred_time = models.CharField(
+        max_length=16, choices=PreferredTime.choices, blank=True
+    )
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 

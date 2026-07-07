@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "accounts",
     "quizzes",
     "attempts",
+    "subscriptions",
 ]
 
 MIDDLEWARE = [
@@ -181,3 +182,17 @@ CORS_ALLOWED_ORIGINS = [
 
 # Trust the same origins for CSRF (needed for cookie/session-based POSTs).
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+
+# ===== DimePay payments =====
+DIMEPAY_API_URL = os.getenv(
+    "DIMEPAY_API_URL", "https://sandbox.api.dimepay.app/dapi/v1"
+)
+DIMEPAY_CLIENT_KEY = os.getenv("DIMEPAY_CLIENT_KEY", "")
+DIMEPAY_SIGNING_SECRET = os.getenv("DIMEPAY_SIGNING_SECRET", "")
+
+# Premium plan pricing (USD / month) shown on the "Go Premium" screen.
+PREMIUM_PRICE_USD = os.getenv("PREMIUM_PRICE_USD", "9.99")
+
+# Public base URLs used to build DimePay webhook / redirect links.
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5178")

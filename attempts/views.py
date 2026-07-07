@@ -1,11 +1,13 @@
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from quizzes.models import Question, Quiz
+from subscriptions.permissions import FREE_TRIAL_QUIZ_LIMIT
 
 from .models import Attempt, AttemptAnswer
 from .serializers import (
@@ -16,6 +18,10 @@ from .serializers import (
 )
 
 
+@extend_schema(
+    tags=["Attempts"],
+    summary="Submit answers for a quiz and receive a graded result",
+)
 class SubmitQuizView(APIView):
     """POST answers for a quiz, grade it, store the attempt (one per student)."""
 
@@ -25,6 +31,26 @@ class SubmitQuizView(APIView):
         quiz = get_object_or_404(
             Quiz, pk=quiz_id, is_published=True, status=Quiz.Status.READY
         )
+
+        # Free-tier access check: only the first FREE_TRIAL_QUIZ_LIMIT quizzes
+        # (ordered by creation date) are accessible without a premium subscription.
+        user = request.user
+        if not user.is_admin:
+            sub = getattr(user, "subscription", None)
+            is_premium = bool(sub and sub.is_premium)
+            if not is_premium:
+                free_ids = list(
+                    Quiz.objects.filter(is_published=True, status=Quiz.Status.READY)
+                    .order_by("created_at")
+                    .values_list("id", flat=True)[:FREE_TRIAL_QUIZ_LIMIT]
+                )
+                if quiz.id not in free_ids:
+                    return Response(
+                        {
+                            "detail": "A premium subscription is required to attempt this quiz."
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
         if Attempt.objects.filter(student=request.user, quiz=quiz).exists():
             return Response(
@@ -85,6 +111,10 @@ class SubmitQuizView(APIView):
         )
 
 
+@extend_schema(
+    tags=["Attempts"],
+    summary="Retrieve the current student's detailed result for a quiz",
+)
 class QuizResultView(APIView):
     """GET the current student's detailed result for a quiz."""
 
@@ -105,6 +135,10 @@ class QuizResultView(APIView):
         return Response(AttemptResultSerializer(attempt).data)
 
 
+@extend_schema(
+    tags=["Attempts"],
+    summary="List all past quiz attempts for the current student",
+)
 class MyAttemptsView(generics.ListAPIView):
     """GET the current student's past quizzes + results."""
 
@@ -119,6 +153,10 @@ class MyAttemptsView(generics.ListAPIView):
         )
 
 
+@extend_schema(
+    tags=["Attempts"],
+    summary="Get the ranked leaderboard for a specific quiz",
+)
 class LeaderboardView(APIView):
     """GET the leaderboard for a quiz (ranked by score, then time)."""
 

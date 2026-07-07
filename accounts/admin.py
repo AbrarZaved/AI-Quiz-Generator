@@ -12,22 +12,29 @@ class UserAdmin(BaseUserAdmin):
     form = CustomUserChangeForm
     model = User
     ordering = ["-date_joined"]
-    list_display = ["email", "full_name", "role", "is_staff", "is_active"]
-    list_filter = ["role", "is_staff", "is_active"]
+    list_display = [
+        "email",
+        "full_name",
+        "student_class",
+        "preferred_time",
+        "role",
+        "is_staff",
+        "is_active",
+    ]
+    list_filter = ["role", "student_class", "preferred_time", "is_staff", "is_active"]
     search_fields = ["email", "full_name"]
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        (_("Personal info"), {"fields": ("full_name", "role")}),
+        (_("Personal info"), {"fields": ("full_name", "role", "contact_number", "current_school")}),
+        (_("Parent info"), {"fields": ("parent_full_name", "parent_email", "parent_contact_number")}),
+        (_("Enrollment"), {"fields": ("student_class", "preferred_time")}),
         (
             _("Permissions"),
             {
                 "fields": (
-                    "is_active",
-                    "is_staff",
-                    "is_superuser",
-                    "groups",
-                    "user_permissions",
+                    "is_active", "is_staff", "is_superuser",
+                    "groups", "user_permissions",
                 )
             },
         ),

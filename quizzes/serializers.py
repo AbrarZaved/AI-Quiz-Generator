@@ -52,6 +52,7 @@ class QuestionTakeSerializer(serializers.ModelSerializer):
 
 class QuizListSerializer(serializers.ModelSerializer):
     question_count = serializers.IntegerField(read_only=True)
+    is_premium_required = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
@@ -67,7 +68,20 @@ class QuizListSerializer(serializers.ModelSerializer):
             "status",
             "is_published",
             "created_at",
+            "is_premium_required",
         ]
+
+    def get_is_premium_required(self, obj):
+        """True when the quiz is locked for free-tier users.
+
+        The view injects ``free_quiz_ids`` into context:
+        - ``None``  → the requester is an admin or premium user (no lock).
+        - a list    → only those quiz IDs are freely accessible.
+        """
+        free_ids = self.context.get("free_quiz_ids")
+        if free_ids is None:
+            return False
+        return obj.id not in free_ids
 
 
 class QuizSerializer(serializers.ModelSerializer):

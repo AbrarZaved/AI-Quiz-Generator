@@ -1,7 +1,11 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from subscriptions.permissions import FREE_TRIAL_QUIZ_LIMIT
 
 from .models import Question, Quiz
 from .permissions import IsAdminRole
@@ -17,9 +21,72 @@ from .serializers import (
 from .tasks import generate_quiz_task
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Quizzes"],
+        summary="List all published quizzes (students) or all quizzes (admins)",
+    ),
+    retrieve=extend_schema(
+        tags=["Quizzes"],
+        summary="Retrieve a single quiz by ID",
+    ),
+    create=extend_schema(
+        tags=["Quizzes"],
+        summary="[Admin] Create a quiz and kick off AI generation",
+    ),
+    update=extend_schema(
+        tags=["Quizzes"],
+        summary="[Admin] Full update of a quiz",
+    ),
+    partial_update=extend_schema(
+        tags=["Quizzes"],
+        summary="[Admin] Partially update a quiz",
+    ),
+    destroy=extend_schema(
+        tags=["Quizzes"],
+        summary="[Admin] Delete a quiz",
+    ),
+)
 class QuizViewSet(viewsets.ModelViewSet):
-    """Admins: full CRUD + generate. Students: list/retrieve published quizzes."""
-    
+    """Admins: full CRUD + generate. Students: list/retrieve published quizzes.
+
+    Free-tier students can see all quizzes in the list but may only open
+    (retrieve / take) the first FREE_TRIAL_QUIZ_LIMIT quizzes (ordered by
+    creation date, oldest first).  Premium students have no restriction.
+    """
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _is_premium(self, user):
+        """Return True when *user* has an active premium subscription."""
+        sub = getattr(user, "subscription", None)
+        return bool(sub and sub.is_premium)
+
+    def _free_quiz_ids(self, student_qs):
+        """IDs of the FREE_TRIAL_QUIZ_LIMIT oldest published+ready quizzes."""
+        return list(
+            student_qs.order_by("created_at").values_list("id", flat=True)[
+                :FREE_TRIAL_QUIZ_LIMIT
+            ]
+        )
+
+    def _require_access(self, quiz):
+        """Raise PermissionDenied if a free user tries to open a locked quiz."""
+        user = self.request.user
+        if user.is_admin or self._is_premium(user):
+            return
+        student_qs = Quiz.objects.filter(is_published=True, status=Quiz.Status.READY)
+        if quiz.id not in self._free_quiz_ids(student_qs):
+            raise PermissionDenied(
+                "A premium subscription is required to access this quiz."
+            )
+
+    # ------------------------------------------------------------------
+    # Standard viewset overrides
+    # ------------------------------------------------------------------
+
     def get_queryset(self):
         user = self.request.user
         qs = Quiz.objects.all().prefetch_related("questions")
@@ -28,8 +95,23 @@ class QuizViewSet(viewsets.ModelViewSet):
             if published is not None:
                 qs = qs.filter(is_published=published.lower() == "true")
             return qs
-        # Students only see published + ready quizzes.
+        # Students (free & premium) see all published + ready quizzes so that
+        # the frontend can render the full list with lock indicators.
         return qs.filter(is_published=True, status=Quiz.Status.READY)
+
+    def get_serializer_context(self):
+        """Inject free_quiz_ids so QuizListSerializer can mark locked quizzes."""
+        ctx = super().get_serializer_context()
+        user = self.request.user
+        if user.is_authenticated and not user.is_admin and not self._is_premium(user):
+            student_qs = Quiz.objects.filter(
+                is_published=True, status=Quiz.Status.READY
+            )
+            ctx["free_quiz_ids"] = self._free_quiz_ids(student_qs)
+        else:
+            # None signals "no restriction" to the serializer.
+            ctx["free_quiz_ids"] = None
+        return ctx
 
     def get_permissions(self):
         if self.action in ("list", "retrieve", "take"):
@@ -69,13 +151,22 @@ class QuizViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(tags=["Quizzes"], summary="Student view: open a quiz (answers hidden)")
+    def retrieve(self, request, *args, **kwargs):
+        quiz = self.get_object()
+        self._require_access(quiz)
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(tags=["Quizzes"], summary="Student view: take a quiz (no correct answers returned)")
     @action(detail=True, methods=["get"], permission_classes=[IsAuthenticated])
     def take(self, request, pk=None):
         """Student-facing view of a quiz (no correct answers / solutions)."""
         quiz = self.get_object()
+        self._require_access(quiz)
         serializer = QuizTakeSerializer(quiz, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @extend_schema(tags=["Quizzes"], summary="[Admin] Regenerate questions for an existing quiz")
     @action(detail=True, methods=["post"])
     def regenerate(self, request, pk=None):
         """Admin regenerates a quiz, optionally changing its parameters first.
@@ -112,12 +203,14 @@ class QuizViewSet(viewsets.ModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
+    @extend_schema(tags=["Quizzes"], summary="[Admin] Poll AI generation progress for a quiz")
     @action(detail=True, methods=["get"])
     def status(self, request, pk=None):
         """Poll generation status/progress for a quiz."""
         quiz = self.get_object()
         return Response(QuizStatusSerializer(quiz).data)
 
+    @extend_schema(tags=["Quizzes"], summary="[Admin] Publish a ready quiz so students can see it")
     @action(detail=True, methods=["post"])
     def publish(self, request, pk=None):
         """Publish a generated (ready) quiz so students can see it."""
@@ -134,6 +227,7 @@ class QuizViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(tags=["Quizzes"], summary="[Admin] Unpublish a quiz (hides it from students)")
     @action(detail=True, methods=["post"])
     def unpublish(self, request, pk=None):
         """Move a published quiz back to draft (hides it from students)."""
@@ -145,6 +239,32 @@ class QuizViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] List questions (filter by ?quiz=<id>)",
+    ),
+    retrieve=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] Retrieve a single question",
+    ),
+    create=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] Create a question",
+    ),
+    update=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] Full update of a question",
+    ),
+    partial_update=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] Partially update a question",
+    ),
+    destroy=extend_schema(
+        tags=["Questions"],
+        summary="[Admin] Delete a question",
+    ),
+)
 class QuestionViewSet(viewsets.ModelViewSet):
     """Admin-only CRUD on individual questions (edit answer/options/delete)."""
 
