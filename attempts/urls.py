@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    DashboardOverviewView,
     LeaderboardView,
     MyAttemptsView,
     QuizResultView,
@@ -20,4 +21,9 @@ urlpatterns = [
         name="quiz-result",
     ),
     path("me/attempts/", MyAttemptsView.as_view(), name="my-attempts"),
+    path(
+        "dashboard/overview/",
+        DashboardOverviewView.as_view(),
+        name="dashboard-overview",
+    ),
 ]

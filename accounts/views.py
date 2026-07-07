@@ -10,6 +10,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .tasks import send_otp_email_task
 from .models import OTPCode
 from .serializers import (
+    ChangePasswordSerializer,
     EmailTokenObtainPairSerializer,
     ForgotPasswordSerializer,
     ResendOTPSerializer,
@@ -18,7 +19,15 @@ from .serializers import (
     UpdateProfileSerializer,
     UserSerializer,
     VerifyAccountSerializer,
+    AdminStudentListSerializer,
+    AdminStudentDetailSerializer,
 )
+from django.db.models import Exists, OuterRef, Q
+from django.utils import timezone
+from rest_framework.pagination import PageNumberPagination
+
+from quizzes.permissions import IsAdminRole
+from subscriptions.models import Plan, Subscription
 
 User = get_user_model()
 
@@ -220,6 +229,34 @@ class UpdateProfileView(APIView):
         return Response(UserSerializer(user).data, status=status.HTTP_200_OK)
 
 
+@extend_schema(
+    tags=["Auth"],
+    summary="Change password for the currently authenticated user",
+)
+class ChangePasswordView(APIView):
+    """POST old_password, new_password, confirm_password -> updates the password.
+
+    Requires authentication. The old password is verified before the change
+    is applied. Django's full password-validation suite runs on the new value.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.set_password(serializer.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        return Response(
+            {"detail": "Password changed successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
 @extend_schema(tags=["Auth"])
 class ForgotPasswordView(APIView):
     """POST email -> emails a 6-digit OTP if the account exists."""
@@ -286,3 +323,111 @@ class ResetPasswordView(APIView):
             {"detail": "Password has been reset. You can now log in."},
             status=status.HTTP_200_OK,
         )
+
+class StudentTablePagination(PageNumberPagination):
+    """10 rows per page (matches the dashboard) with client-tunable size."""
+
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        response = super().get_paginated_response(data)
+        response.data["total_pages"] = self.page.paginator.num_pages
+        response.data["current_page"] = self.page.number
+        return response
+
+
+@extend_schema(
+    tags=["Admin - Students"],
+    summary="[Admin] List/search students with plan & status + summary counts",
+)
+class AdminStudentListView(generics.ListAPIView):
+    """GET the admin Student table: paginated rows + the four summary counts.
+
+    Supports ?search=, ?plan=, ?status=, ?class=, ?page=, ?page_size=.
+    """
+
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentListSerializer
+    pagination_class = StudentTablePagination
+
+    # ------------------------------------------------------------------
+    # Querysets
+    # ------------------------------------------------------------------
+    def _premium_subquery(self):
+        """Correlated subquery: does this user have an ACTIVE premium plan?"""
+        now = timezone.now()
+        return Subscription.objects.filter(
+            user_id=OuterRef("pk"),
+            plan=Plan.PREMIUM,
+            status=Subscription.Status.ACTIVE,
+        ).filter(
+            Q(current_period_end__isnull=True) | Q(current_period_end__gt=now)
+        )
+
+    def get_base_queryset(self):
+        return User.objects.filter(role=User.Role.STUDENT).annotate(
+            is_premium=Exists(self._premium_subquery())
+        )
+
+    def get_queryset(self):
+        qs = self.get_base_queryset()
+        params = self.request.query_params
+
+        search = params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(full_name__icontains=search) | Q(email__icontains=search)
+            )
+
+        student_class = params.get("class") or params.get("student_class")
+        if student_class:
+            qs = qs.filter(student_class=student_class)
+
+        plan = params.get("plan")
+        if plan == "premium":
+            qs = qs.filter(is_premium=True)
+        elif plan in ("free", "free_trial"):
+            qs = qs.filter(is_premium=False)
+
+        status_param = params.get("status")
+        if status_param == "active":
+            qs = qs.filter(is_active=True)
+        elif status_param == "inactive":
+            qs = qs.filter(is_active=False)
+
+        # Ascending Id to match the dashboard's row numbering.
+        return qs.order_by("id")
+
+    # ------------------------------------------------------------------
+    # Summary cards (computed over ALL students, ignoring pagination)
+    # ------------------------------------------------------------------
+    def get_stats(self):
+        base = self.get_base_queryset()
+        total = base.count()
+        premium = base.filter(is_premium=True).count()
+        return {
+            "total_students": total,
+            "active_students": base.filter(is_active=True).count(),
+            "premium_students": premium,
+            "free_students": total - premium,
+        }
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        # Attach the summary cards alongside the paginated results.
+        response.data["stats"] = self.get_stats()
+        return response
+        
+@extend_schema(
+    tags=["Admin - Students"],
+    summary="[Admin] Retrieve one student's full profile, subscription, payment & quiz history",
+)
+class AdminStudentDetailView(generics.RetrieveAPIView):
+    """GET a single student's complete detail record (admin only)."""
+
+    permission_classes = [IsAdminRole]
+    serializer_class = AdminStudentDetailSerializer
+    queryset = User.objects.filter(role=User.Role.STUDENT)
+    lookup_field = "pk"

@@ -103,3 +103,34 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.order_id} - {self.user.email} - {self.get_status_display()}"
+
+
+class SubscriptionPlan(models.Model):
+    """Editable catalog entry for a subscription plan (name + price).
+
+    `code` maps to the Plan enum value used elsewhere (free_trial / premium),
+    so existing logic keeps working while the price becomes DB-editable.
+    """
+
+    code = models.CharField(
+        max_length=20,
+        choices=Plan.choices,
+        unique=True,
+        help_text="Maps to the Plan enum value (free_trial / premium).",
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
+    currency = models.CharField(max_length=8, default="USD")
+    billing_period_days = models.PositiveIntegerField(default=30)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["price"]
+
+    def __str__(self):
+        return f"{self.name} ({self.price} {self.currency})"

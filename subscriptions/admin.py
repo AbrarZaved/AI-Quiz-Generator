@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Payment, Subscription
+from .models import Payment, Subscription, SubscriptionPlan
 
 
 @admin.register(Subscription)
@@ -18,3 +18,14 @@ class PaymentAdmin(admin.ModelAdmin):
     ]
     list_filter = ["status", "currency"]
     search_fields = ["order_id", "user__email", "dimepay_transaction_id"]
+
+
+
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(admin.ModelAdmin):
+    list_display = [
+        "code", "name", "price", "currency",
+        "billing_period_days", "is_active", "updated_at",
+    ]
+    list_editable = ["price", "is_active"]

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import Attempt, AttemptAnswer
-
+from quizzes.models import Quiz
 
 class SubmitAnswerSerializer(serializers.Serializer):
     question = serializers.IntegerField(help_text="Question id")
@@ -95,3 +95,35 @@ class LeaderboardEntrySerializer(serializers.ModelSerializer):
             "percentage",
             "submitted_at",
         ]
+
+
+class TopStudentSerializer(serializers.Serializer):
+    """A single row in the dashboard "Top Students" table."""
+
+    student_id = serializers.IntegerField(read_only=True)
+    student_name = serializers.CharField(read_only=True)
+    average_score = serializers.FloatField(read_only=True)
+    quizzes_completed = serializers.IntegerField(read_only=True)
+
+
+class RecentQuizUploadSerializer(serializers.ModelSerializer):
+    """A single row in the dashboard "Recent Quiz uploads" table."""
+
+    # Real number of generated questions (annotated in the view for efficiency).
+    questions = serializers.IntegerField(source="questions_total", read_only=True)
+    # Maps is_published -> "Published" / "Draft" to match the dashboard column.
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Quiz
+        fields = [
+            "id",
+            "title",
+            "questions",
+            "status",
+            "is_published",
+            "created_at",
+        ]
+
+    def get_status(self, obj):
+        return "Published" if obj.is_published else "Draft"

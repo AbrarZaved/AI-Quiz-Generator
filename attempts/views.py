@@ -15,7 +15,22 @@ from .serializers import (
     LeaderboardEntrySerializer,
     MyAttemptSerializer,
     SubmitQuizSerializer,
+    RecentQuizUploadSerializer,
+    TopStudentSerializer,
 )
+from django.contrib.auth import get_user_model
+from django.db.models import (
+    Avg,
+    Case,
+    Count,
+    ExpressionWrapper,
+    F,
+    FloatField,
+    Value,
+    When,
+)
+
+from quizzes.permissions import IsAdminRole
 
 
 @extend_schema(
@@ -173,3 +188,84 @@ class LeaderboardView(APIView):
             attempt.rank = index
         data = LeaderboardEntrySerializer(attempts, many=True).data
         return Response({"quiz": quiz.id, "quiz_title": quiz.title, "results": data})
+
+User = get_user_model()
+
+
+@extend_schema(
+    tags=["Dashboard"],
+    summary="[Admin] Aggregated stats for the dashboard overview screen",
+)
+class DashboardOverviewView(APIView):
+    """GET aggregated data for the admin dashboard overview:
+
+    * total student & quiz-upload counts
+    * top students (by average score, then quizzes completed)
+    * the most recent quiz uploads
+    """
+
+    permission_classes = [IsAdminRole]
+
+    def get(self, request):
+        top_limit = self._int_param(request, "top_students", default=6)
+        recent_limit = self._int_param(request, "recent_uploads", default=6)
+
+        total_students = User.objects.filter(role=User.Role.STUDENT).count()
+        total_quiz_uploads = Quiz.objects.count()
+
+        # Per-attempt percentage, guarding against total == 0.
+        percentage_expr = Case(
+            When(
+                attempts__total__gt=0,
+                then=ExpressionWrapper(
+                    F("attempts__score") * 100.0 / F("attempts__total"),
+                    output_field=FloatField(),
+                ),
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        )
+
+        top_students = (
+            User.objects.filter(
+                role=User.Role.STUDENT, attempts__isnull=False
+            )
+            .annotate(
+                quizzes_completed=Count("attempts", distinct=True),
+                average_score=Avg(percentage_expr),
+            )
+            .order_by("-average_score", "-quizzes_completed")[:top_limit]
+        )
+
+        top_rows = [
+            {
+                "student_id": student.id,
+                "student_name": student.full_name,
+                "average_score": round(student.average_score or 0.0, 2),
+                "quizzes_completed": student.quizzes_completed,
+            }
+            for student in top_students
+        ]
+
+        recent_uploads = Quiz.objects.annotate(
+            questions_total=Count("questions")
+        ).order_by("-created_at")[:recent_limit]
+
+        data = {
+            "total_students": total_students,
+            "total_quiz_uploads": total_quiz_uploads,
+            "top_students": TopStudentSerializer(top_rows, many=True).data,
+            "recent_uploads": RecentQuizUploadSerializer(
+                recent_uploads, many=True
+            ).data,
+        }
+        return Response(data)
+
+    @staticmethod
+    def _int_param(request, name, default):
+        """Parse a positive int query param, clamped to a sane range."""
+        try:
+            value = int(request.query_params.get(name, default))
+        except (TypeError, ValueError):
+            return default
+        return max(1, min(value, 50))

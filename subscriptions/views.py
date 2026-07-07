@@ -1,18 +1,19 @@
+from locale import currency
 import uuid
 from decimal import Decimal
 
 import jwt
 from django.conf import settings
 from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from quizzes.permissions import IsAdminOrReadOnly
 from .dimepay import DimePayClient, DimePayError
-from .models import Payment, Plan, Subscription
-from .serializers import SubscriptionSerializer
-
+from .models import Payment, Plan, Subscription, SubscriptionPlan
+from .serializers import SubscriptionPlanSerializer, SubscriptionSerializer
 
 def _get_or_create_subscription(user):
     sub, _ = Subscription.objects.get_or_create(user=user)
@@ -91,14 +92,26 @@ class CreatePremiumCheckoutView(APIView):
 
     def post(self, request):
         user = request.user
-        amount = Decimal(str(settings.PREMIUM_PRICE_USD))
+
+        # Pull live pricing from the editable SubscriptionPlan catalog,
+        # falling back to the settings value if the row is missing.
+        premium_plan = SubscriptionPlan.objects.filter(
+            code=Plan.PREMIUM, is_active=True
+        ).first()
+        if premium_plan is not None:
+            amount = premium_plan.price
+            currency = premium_plan.currency
+        else:
+            amount = Decimal(str(settings.PREMIUM_PRICE_USD))
+            currency = "USD"
+
         order_id = f"SUB-{uuid.uuid4().hex[:12].upper()}"
 
         payment = Payment.objects.create(
             user=user,
             order_id=order_id,
             amount=amount,
-            currency="USD",
+            currency=currency,
             status=Payment.Status.PENDING,
         )
 
@@ -110,6 +123,7 @@ class CreatePremiumCheckoutView(APIView):
                 email=user.email,
                 item_name="Excellim Premium (Monthly)",
                 item_description="Unlimited access to all topics & quizzes",
+                currency=currency,
             )
         except DimePayError as exc:
             payment.status = Payment.Status.FAILED
@@ -194,3 +208,28 @@ class DimePayWebhookView(APIView):
 
         payment.save()
         return Response({"received": True}, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=["Admin - Plans"],
+    summary="List all subscription plans (public read for the pricing screen)",
+)
+class SubscriptionPlanListView(generics.ListAPIView):
+    """GET every plan. Reads are open; only admins can write (via detail view)."""
+
+    permission_classes = [IsAdminOrReadOnly]
+    serializer_class = SubscriptionPlanSerializer
+    queryset = SubscriptionPlan.objects.all()
+
+
+@extend_schema(
+    tags=["Admin - Plans"],
+    summary="[Admin] Retrieve or edit a subscription plan's price & details",
+)
+class AdminSubscriptionPlanDetailView(generics.RetrieveUpdateAPIView):
+    """GET one plan; PATCH/PUT to edit price/name/currency/etc. (admin only)."""
+
+    permission_classes = [IsAdminOrReadOnly]
+    serializer_class = SubscriptionPlanSerializer
+    queryset = SubscriptionPlan.objects.all()
+    lookup_field = "pk"
