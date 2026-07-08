@@ -22,6 +22,10 @@ User = get_user_model()
 
 # --- Extend UserSerializer.Meta.fields to expose the new data ---
 class UserSerializer(serializers.ModelSerializer):
+    plan = serializers.SerializerMethodField()
+    is_premium = serializers.SerializerMethodField()
+    is_free = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -29,8 +33,21 @@ class UserSerializer(serializers.ModelSerializer):
             "contact_number", "current_school",
             "parent_full_name", "parent_email", "parent_contact_number",
             "student_class", "preferred_time", "profile_picture",
+            "plan", "is_premium", "is_free",
         ]
         read_only_fields = fields
+
+    def get_plan(self, obj):
+        sub = getattr(obj, "subscription", None)
+        return sub.plan if sub else "free_trial"
+
+    def get_is_premium(self, obj):
+        sub = getattr(obj, "subscription", None)
+        return bool(sub and sub.is_premium)
+
+    def get_is_free(self, obj):
+        sub = getattr(obj, "subscription", None)
+        return not bool(sub and sub.is_premium)
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
@@ -140,10 +157,21 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token["role"] = user.role
         token["full_name"] = user.full_name
+        
+        sub = getattr(user, "subscription", None)
+        token["plan"] = sub.plan if sub else "free_trial"
+        token["is_premium"] = bool(sub and sub.is_premium)
+        token["is_free"] = not bool(sub and sub.is_premium)
         return token
 
     def validate(self, attrs):
         data = super().validate(attrs)
+        
+        sub = getattr(self.user, "subscription", None)
+        data["plan"] = sub.plan if sub else "free_trial"
+        data["is_premium"] = bool(sub and sub.is_premium)
+        data["is_free"] = not bool(sub and sub.is_premium)
+        
         data["user"] = UserSerializer(self.user).data
         return data
 

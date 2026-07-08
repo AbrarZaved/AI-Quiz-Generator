@@ -175,7 +175,7 @@ CORS_ALLOWED_ORIGINS = [
     o.strip()
     for o in os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://10.10.29.185:5178,http://localhost:5178,http://127.0.0.1:5178",
+        "http://10.10.29.185:5179,http://localhost:5178,http://127.0.0.1:5178",
     ).split(",")
     if o.strip()
 ]

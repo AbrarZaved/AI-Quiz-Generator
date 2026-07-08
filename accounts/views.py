@@ -7,6 +7,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 from .tasks import send_otp_email_task
 from .models import OTPCode
 from .serializers import (
@@ -55,6 +56,22 @@ def _send_otp_email(user, otp):
     )
 
 
+def get_tokens_for_user(user):
+    refresh = RefreshToken.for_user(user)
+    refresh["role"] = user.role
+    refresh["full_name"] = user.full_name
+    
+    sub = getattr(user, "subscription", None)
+    refresh["plan"] = sub.plan if sub else "free_trial"
+    refresh["is_premium"] = bool(sub and sub.is_premium)
+    refresh["is_free"] = not bool(sub and sub.is_premium)
+    
+    return {
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+    }
+
+
 @extend_schema(tags=["Auth"])
 class SignupView(generics.CreateAPIView):
     """POST email, full_name, password -> create an inactive student and email an OTP."""
@@ -70,6 +87,8 @@ class SignupView(generics.CreateAPIView):
         otp = OTPCode.generate_for(user, OTPCode.Purpose.EMAIL_VERIFICATION)
         send_otp_email_task.delay(user.id, otp.code, otp.purpose)
 
+        tokens = get_tokens_for_user(user)
+        sub = getattr(user, "subscription", None)
         return Response(
             {
                 "detail": (
@@ -77,6 +96,12 @@ class SignupView(generics.CreateAPIView):
                     "your account. Verify it to activate your login."
                 ),
                 "email": user.email,
+                "access": tokens["access"],
+                "refresh": tokens["refresh"],
+                "plan": sub.plan if sub else "free_trial",
+                "is_premium": bool(sub and sub.is_premium),
+                "is_free": not bool(sub and sub.is_premium),
+                "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -101,6 +126,8 @@ class RegisterStudentView(generics.CreateAPIView):
         otp = OTPCode.generate_for(user, OTPCode.Purpose.EMAIL_VERIFICATION)
         send_otp_email_task.delay(user.id, otp.code, otp.purpose)
 
+        tokens = get_tokens_for_user(user)
+        sub = getattr(user, "subscription", None)
         return Response(
             {
                 "detail": (
@@ -108,6 +135,12 @@ class RegisterStudentView(generics.CreateAPIView):
                     "verify the account."
                 ),
                 "email": user.email,
+                "access": tokens["access"],
+                "refresh": tokens["refresh"],
+                "plan": sub.plan if sub else "free_trial",
+                "is_premium": bool(sub and sub.is_premium),
+                "is_free": not bool(sub and sub.is_premium),
+                "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -156,8 +189,18 @@ class VerifyAccountView(APIView):
         otp.is_used = True
         otp.save(update_fields=["is_used"])
 
+        tokens = get_tokens_for_user(user)
+        sub = getattr(user, "subscription", None)
         return Response(
-            {"detail": "Account verified and activated. You can now log in."},
+            {
+                "detail": "Account verified and activated. You can now log in.",
+                "access": tokens["access"],
+                "refresh": tokens["refresh"],
+                "plan": sub.plan if sub else "free_trial",
+                "is_premium": bool(sub and sub.is_premium),
+                "is_free": not bool(sub and sub.is_premium),
+                "user": UserSerializer(user).data,
+            },
             status=status.HTTP_200_OK,
         )
 

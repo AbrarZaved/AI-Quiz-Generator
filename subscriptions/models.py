@@ -134,3 +134,19 @@ class SubscriptionPlan(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.price} {self.currency})"
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_subscription(sender, instance, created, **kwargs):
+    if created:
+        Subscription.objects.get_or_create(
+            user=instance,
+            defaults={
+                "plan": Plan.FREE_TRIAL,
+                "status": Subscription.Status.TRIALING,
+            },
+        )

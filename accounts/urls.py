@@ -19,7 +19,7 @@ from .views import (
 
 urlpatterns = [
     path("register/", RegisterStudentView.as_view(), name="register"),
-    # path("signup/", SignupView.as_view(), name="signup"),
+    path("signup/", SignupView.as_view(), name="signup"),
     path("verify/", VerifyAccountView.as_view(), name="verify-account"),
     path("verify/resend/", ResendVerificationOTPView.as_view(), name="verify-resend"),
     path("login/", LoginView.as_view(), name="login"),
