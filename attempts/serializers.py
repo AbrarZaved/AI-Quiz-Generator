@@ -24,7 +24,7 @@ class AttemptAnswerResultSerializer(serializers.ModelSerializer):
     question_text = serializers.CharField(source="question.question_text")
     options = serializers.JSONField(source="question.options")
     correct_answer = serializers.IntegerField(source="question.correct_answer")
-    steps = serializers.CharField(source="question.steps")
+    steps = serializers.JSONField(source="question.steps")
 
     class Meta:
         model = AttemptAnswer
@@ -44,7 +44,9 @@ class AttemptResultSerializer(serializers.ModelSerializer):
     """Detailed result including correct answers + step-by-step solutions."""
 
     percentage = serializers.FloatField(read_only=True)
+    accuracy = serializers.FloatField(source="percentage", read_only=True)
     quiz_title = serializers.CharField(source="quiz.title", read_only=True)
+    reference_pdf = serializers.FileField(source="quiz.reference_pdf", read_only=True)
     answers = AttemptAnswerResultSerializer(many=True, read_only=True)
 
     class Meta:
@@ -53,9 +55,11 @@ class AttemptResultSerializer(serializers.ModelSerializer):
             "id",
             "quiz",
             "quiz_title",
+            "reference_pdf",
             "score",
             "total",
             "percentage",
+            "accuracy",
             "submitted_at",
             "answers",
         ]

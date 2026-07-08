@@ -28,7 +28,12 @@ from django.db.models import (
     FloatField,
     Value,
     When,
+    Sum,
 )
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
+from django.utils import timezone
+from datetime import timedelta
+from subscriptions.models import Payment
 
 from quizzes.permissions import IsAdminRole
 
@@ -251,9 +256,60 @@ class DashboardOverviewView(APIView):
             questions_total=Count("questions")
         ).order_by("-created_at")[:recent_limit]
 
+        # Calculate Total Revenue
+        total_rev = Payment.objects.filter(status=Payment.Status.COMPLETE).aggregate(total=Sum("amount"))["total"] or 0
+
+        # Daily Revenue (last 30 days)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        daily_revenue = (
+            Payment.objects.filter(status=Payment.Status.COMPLETE, created_at__gte=thirty_days_ago)
+            .annotate(date=TruncDay("created_at"))
+            .values("date")
+            .annotate(amount=Sum("amount"))
+            .order_by("date")
+        )
+        daily_data = [
+            {"date": item["date"].strftime("%Y-%m-%d"), "amount": float(item["amount"])}
+            for item in daily_revenue
+        ]
+
+        # Weekly Revenue (last 12 weeks)
+        twelve_weeks_ago = timezone.now() - timedelta(weeks=12)
+        weekly_revenue = (
+            Payment.objects.filter(status=Payment.Status.COMPLETE, created_at__gte=twelve_weeks_ago)
+            .annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(amount=Sum("amount"))
+            .order_by("week")
+        )
+        weekly_data = [
+            {"week": item["week"].strftime("%Y-%m-%d"), "amount": float(item["amount"])}
+            for item in weekly_revenue
+        ]
+
+        # Monthly Revenue (last 12 months)
+        twelve_months_ago = timezone.now() - timedelta(days=365)
+        monthly_revenue = (
+            Payment.objects.filter(status=Payment.Status.COMPLETE, created_at__gte=twelve_months_ago)
+            .annotate(month=TruncMonth("created_at"))
+            .values("month")
+            .annotate(amount=Sum("amount"))
+            .order_by("month")
+        )
+        monthly_data = [
+            {"month": item["month"].strftime("%Y-%m"), "amount": float(item["amount"])}
+            for item in monthly_revenue
+        ]
+
         data = {
+            "total_revenue": float(total_rev),
             "total_students": total_students,
             "total_quiz_uploads": total_quiz_uploads,
+            "revenue_trend": {
+                "daily": daily_data,
+                "weekly": weekly_data,
+                "monthly": monthly_data,
+            },
             "top_students": TopStudentSerializer(top_rows, many=True).data,
             "recent_uploads": RecentQuizUploadSerializer(
                 recent_uploads, many=True

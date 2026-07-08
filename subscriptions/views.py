@@ -9,6 +9,8 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import logging
+logger = logging.getLogger(__name__)
 
 from quizzes.permissions import IsAdminOrReadOnly
 from .dimepay import DimePayClient, DimePayError
@@ -126,6 +128,7 @@ class CreatePremiumCheckoutView(APIView):
                 currency=currency,
             )
         except DimePayError as exc:
+            logger.error("Premium checkout failed for %s: %s", user.email, exc)
             payment.status = Payment.Status.FAILED
             payment.raw_response = {"error": str(exc)}
             payment.save()
@@ -217,7 +220,7 @@ class DimePayWebhookView(APIView):
 class SubscriptionPlanListView(generics.ListAPIView):
     """GET every plan. Reads are open; only admins can write (via detail view)."""
 
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = []
     serializer_class = SubscriptionPlanSerializer
     queryset = SubscriptionPlan.objects.all()
 

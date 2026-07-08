@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from django.utils.crypto import get_random_string
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .tasks import send_otp_email_task
+from .tasks import send_otp_email_task, send_temp_password_email_task
 from .models import OTPCode
 from .serializers import (
     ChangePasswordSerializer,
@@ -77,6 +78,7 @@ class SignupView(generics.CreateAPIView):
     """POST email, full_name, password -> create an inactive student and email an OTP."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
     serializer_class = SignupSerializer
 
     def create(self, request, *args, **kwargs):
@@ -87,8 +89,6 @@ class SignupView(generics.CreateAPIView):
         otp = OTPCode.generate_for(user, OTPCode.Purpose.EMAIL_VERIFICATION)
         send_otp_email_task.delay(user.id, otp.code, otp.purpose)
 
-        tokens = get_tokens_for_user(user)
-        sub = getattr(user, "subscription", None)
         return Response(
             {
                 "detail": (
@@ -96,12 +96,6 @@ class SignupView(generics.CreateAPIView):
                     "your account. Verify it to activate your login."
                 ),
                 "email": user.email,
-                "access": tokens["access"],
-                "refresh": tokens["refresh"],
-                "plan": sub.plan if sub else "free_trial",
-                "is_premium": bool(sub and sub.is_premium),
-                "is_free": not bool(sub and sub.is_premium),
-                "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -116,6 +110,7 @@ class RegisterStudentView(generics.CreateAPIView):
     """POST the full 4-step registration payload -> create an inactive student and email an OTP."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
     serializer_class = StudentRegistrationSerializer
 
     def create(self, request, *args, **kwargs):
@@ -126,8 +121,6 @@ class RegisterStudentView(generics.CreateAPIView):
         otp = OTPCode.generate_for(user, OTPCode.Purpose.EMAIL_VERIFICATION)
         send_otp_email_task.delay(user.id, otp.code, otp.purpose)
 
-        tokens = get_tokens_for_user(user)
-        sub = getattr(user, "subscription", None)
         return Response(
             {
                 "detail": (
@@ -135,12 +128,6 @@ class RegisterStudentView(generics.CreateAPIView):
                     "verify the account."
                 ),
                 "email": user.email,
-                "access": tokens["access"],
-                "refresh": tokens["refresh"],
-                "plan": sub.plan if sub else "free_trial",
-                "is_premium": bool(sub and sub.is_premium),
-                "is_free": not bool(sub and sub.is_premium),
-                "user": UserSerializer(user).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -150,6 +137,7 @@ class VerifyAccountView(APIView):
     """POST email, otp -> activate the account so the user can log in."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = VerifyAccountSerializer(data=request.data)
@@ -184,10 +172,15 @@ class VerifyAccountView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        temp_password = get_random_string(length=10)
+        user.set_password(temp_password)
         user.is_active = True
-        user.save(update_fields=["is_active"])
+        user.save()
+        
         otp.is_used = True
         otp.save(update_fields=["is_used"])
+
+        send_temp_password_email_task.delay(user.id, temp_password)
 
         tokens = get_tokens_for_user(user)
         sub = getattr(user, "subscription", None)
@@ -210,6 +203,7 @@ class ResendVerificationOTPView(APIView):
     """POST email -> resend the signup verification OTP (if account is unverified)."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = ResendOTPSerializer(data=request.data)
@@ -232,6 +226,7 @@ class LoginView(TokenObtainPairView):
     """POST email, password -> { access, refresh, user }. Inactive accounts are rejected."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
     serializer_class = EmailTokenObtainPairSerializer
 
 
@@ -305,6 +300,7 @@ class ForgotPasswordView(APIView):
     """POST email -> emails a 6-digit OTP if the account exists."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
@@ -328,6 +324,7 @@ class ResetPasswordView(APIView):
     """POST email, otp, new_password -> sets a new password."""
 
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)

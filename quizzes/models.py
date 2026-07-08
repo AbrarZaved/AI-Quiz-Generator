@@ -17,6 +17,9 @@ class Quiz(models.Model):
     chapter = models.CharField(max_length=255)
     topic = models.CharField(max_length=255)
     num_questions = models.PositiveIntegerField(default=5)
+    time_limit = models.PositiveIntegerField(
+        default=30, help_text="Time limit for the quiz in minutes."
+    )
 
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING

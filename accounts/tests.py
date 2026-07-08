@@ -2,11 +2,13 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from django.test import override_settings
 from accounts.models import OTPCode
 
 User = get_user_model()
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class SignupVerifyLoginTests(APITestCase):
     """Covers the signup -> OTP verify -> activate -> login flow."""
 
@@ -48,6 +50,9 @@ class SignupVerifyLoginTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_verify_then_login(self):
+        from django.core.mail import outbox
+        import re
+
         self.client.post(
             "/api/auth/signup/",
             {
@@ -72,9 +77,14 @@ class SignupVerifyLoginTests(APITestCase):
         user.refresh_from_db()
         self.assertTrue(user.is_active)
 
+        # Parse temporary password from outbox
+        temp_pass_email = [email for email in outbox if "Your Temporary Password" in email.subject][0]
+        match = re.search(r"log in to your account:\s+(\w+)", temp_pass_email.body)
+        temp_password = match.group(1) if match else re.findall(r"\b[a-zA-Z0-9]{10}\b", temp_pass_email.body)[0]
+
         login = self.client.post(
             "/api/auth/login/",
-            {"email": "new@example.com", "password": "strongpass123"},
+            {"email": "new@example.com", "password": temp_password},
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
@@ -82,7 +92,9 @@ class SignupVerifyLoginTests(APITestCase):
 
     def test_default_free_subscription_and_tokens_on_signup_verify_and_login(self):
         from subscriptions.models import Subscription
+        from django.core.mail import outbox
         import jwt
+        import re
 
         # 1. Test Signup
         res = self.client.post(
@@ -102,16 +114,9 @@ class SignupVerifyLoginTests(APITestCase):
         self.assertEqual(sub.plan, "free_trial")
         self.assertEqual(sub.status, "trialing")
         
-        # Verify tokens and flags in signup response
-        self.assertIn("access", res.data)
-        self.assertIn("refresh", res.data)
-        self.assertEqual(res.data["plan"], "free_trial")
-        self.assertEqual(res.data["is_premium"], False)
-        self.assertEqual(res.data["is_free"], True)
-        self.assertEqual(res.data["user"]["email"], "test_flags@example.com")
-        self.assertEqual(res.data["user"]["plan"], "free_trial")
-        self.assertEqual(res.data["user"]["is_premium"], False)
-        self.assertEqual(res.data["user"]["is_free"], True)
+        # Verify tokens are NOT in signup response
+        self.assertNotIn("access", res.data)
+        self.assertNotIn("refresh", res.data)
 
         # 2. Test Verification
         otp = OTPCode.objects.filter(
@@ -133,10 +138,15 @@ class SignupVerifyLoginTests(APITestCase):
         self.assertEqual(verify.data["is_free"], True)
         self.assertEqual(verify.data["user"]["plan"], "free_trial")
         
+        # Parse temporary password from outbox
+        temp_pass_email = [email for email in outbox if "Your Temporary Password" in email.subject][0]
+        match = re.search(r"log in to your account:\s+(\w+)", temp_pass_email.body)
+        temp_password = match.group(1) if match else re.findall(r"\b[a-zA-Z0-9]{10}\b", temp_pass_email.body)[0]
+
         # 3. Test Login
         login = self.client.post(
             "/api/auth/login/",
-            {"email": "test_flags@example.com", "password": "strongpass123"},
+            {"email": "test_flags@example.com", "password": temp_password},
             format="json",
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
@@ -155,4 +165,25 @@ class SignupVerifyLoginTests(APITestCase):
         self.assertEqual(payload["plan"], "free_trial")
         self.assertEqual(payload["is_premium"], False)
         self.assertEqual(payload["is_free"], True)
+
+    def test_public_endpoints_ignore_invalid_token(self):
+        res = self.client.post(
+            "/api/auth/register/",
+            {
+                "full_name": "Public Registration User",
+                "email": "public_reg@example.com",
+                "contact_number": "12345678",
+                "current_school": "Test School",
+                "parent_full_name": "Parent Name",
+                "parent_email": "parent@example.com",
+                "parent_contact_number": "87654321",
+                "student_class": "4th",
+                "preferred_time": "morning",
+            },
+            HTTP_AUTHORIZATION="Bearer invalid-expired-or-bad-token",
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+
 

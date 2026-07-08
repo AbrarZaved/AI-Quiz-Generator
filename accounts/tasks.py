@@ -56,3 +56,31 @@ def send_otp_email_task(user_id, otp_code, purpose):
     message.attach_alternative(html_body, "text/html")
     message.send(fail_silently=False)
     logger.info("Sent %s email to %s", purpose, user.email)
+
+
+@shared_task
+def send_temp_password_email_task(user_id, temp_password):
+    """Send a temporary password email as HTML + plain text."""
+    User = get_user_model()
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        logger.warning("send_temp_password_email_task: user %s no longer exists", user_id)
+        return
+
+    context = {
+        "full_name": user.full_name,
+        "temp_password": temp_password,
+    }
+
+    html_body = render_to_string("emails/temp_password.html", context)
+    text_body = strip_tags(html_body)
+
+    message = EmailMultiAlternatives(
+        subject="Your Temporary Password",
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    message.attach_alternative(html_body, "text/html")
+    message.send(fail_silently=False)
+    logger.info("Sent temporary password email to %s", user.email)

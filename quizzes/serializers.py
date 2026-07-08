@@ -64,6 +64,7 @@ class QuizListSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "time_limit",
             "question_count",
             "status",
             "is_published",
@@ -100,6 +101,7 @@ class QuizSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "time_limit",
             "reference_pdf",
             "question_count",
             "status",
@@ -132,6 +134,7 @@ class QuizCreateSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "time_limit",
             "reference_pdf",
             "is_published",
         ]
@@ -139,6 +142,11 @@ class QuizCreateSerializer(serializers.ModelSerializer):
     def validate_num_questions(self, value):
         if value < 1 or value > 50:
             raise serializers.ValidationError("num_questions must be between 1 and 50.")
+        return value
+
+    def validate_time_limit(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("time_limit must be greater than 0.")
         return value
 
 class QuizRegenerateSerializer(serializers.ModelSerializer):
@@ -157,6 +165,7 @@ class QuizRegenerateSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "time_limit",
             "reference_pdf",
             "is_published",
         ]
@@ -164,6 +173,11 @@ class QuizRegenerateSerializer(serializers.ModelSerializer):
     def validate_num_questions(self, value):
         if value < 1 or value > 50:
             raise serializers.ValidationError("num_questions must be between 1 and 50.")
+        return value
+
+    def validate_time_limit(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("time_limit must be greater than 0.")
         return value
 
 class QuizTakeSerializer(serializers.ModelSerializer):
@@ -181,6 +195,7 @@ class QuizTakeSerializer(serializers.ModelSerializer):
             "chapter",
             "topic",
             "num_questions",
+            "time_limit",
             "questions",
         ]
 
