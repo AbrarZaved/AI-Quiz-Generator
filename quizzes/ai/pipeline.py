@@ -27,7 +27,8 @@ client = OpenAI(api_key=OPEN_AI_API_KEY)
 # ===================== CONFIGURATION ======================
 GENERATION_MODEL = "gpt-5"
 TEMPERATURE = 0.35
-MAX_TOKENS = 400
+MAX_TOKENS = 4000
+
 
 # ===================== BOOK DATA DIRECTORY =====================
 # Root folder that contains the volume1/ and volume2/ sub-folders.

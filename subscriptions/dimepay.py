@@ -1,4 +1,5 @@
 # subscriptions/dimepay.py
+import json
 import logging
 import jwt
 import requests
@@ -6,7 +7,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-import json  # add near the top with the other imports
+
 class DimePayError(Exception):
     """Raised when a DimePay API call fails."""
 
@@ -29,6 +30,24 @@ class DimePayClient:
             "client_key": self.client_key,
             "Content-Type": "application/json",
         }
+
+    @staticmethod
+    def _unwrap(data):
+        """Unwrap DimePay's response envelope.
+
+        DimePay returns {"statusCode":.., "headers":.., "body":..} where the
+        real payload lives under body (which may be a JSON-encoded string).
+        """
+        if isinstance(data, dict) and "statusCode" in data and "body" in data:
+            body = data["body"]
+            if isinstance(body, (str, bytes)):
+                try:
+                    body = json.loads(body)
+                except (ValueError, TypeError):
+                    pass
+            return body
+        return data
+
     def _sign(self, payload) -> str:
         # PyJWT serializes to JSON itself, so it MUST receive a dict — never a string/set.
         if isinstance(payload, (str, bytes)):
@@ -41,7 +60,8 @@ class DimePayClient:
         return token.decode() if isinstance(token, bytes) else token
 
     def create_hosted_page(self, *, order_id, amount, email, item_name,
-                           item_description="", currency="USD"):
+                       item_description="", currency="USD",
+                       ip_address, fulfilled=False):
         payload = {
             "webhookUrl": f"{settings.BACKEND_URL}/api/billing/webhook/dimepay/",
             "redirectUrl": f"{settings.FRONTEND_URL}/payment/success?order_id={order_id}",
@@ -54,6 +74,8 @@ class DimePayClient:
             "total": float(amount),
             "tax": 0,
             "email": email,
+            "ipAddress": ip_address,
+            "fulfilled": fulfilled,
             "items": [
                 {
                     "id": "premium-monthly",
@@ -85,4 +107,15 @@ class DimePayClient:
         except requests.RequestException as exc:
             logger.exception("DimePay hosted-page request failed")
             raise DimePayError(f"DimePay hosted-page request failed: {exc}") from exc
-        return res.json()
+        raw = res.json()
+        logger.info("DimePay hosted-page raw response: %s", raw)
+
+        # DimePay wraps the payload in an envelope:
+        #   { statusCode, body: { message, response: { order_url } } }
+        body = self._unwrap(raw)  # strips the outer statusCode/headers layer
+        response_inner = body.get("response", {}) if isinstance(body, dict) else {}
+        order_url = response_inner.get("order_url") if isinstance(response_inner, dict) else None
+        if not order_url:
+            logger.error("DimePay hosted-page returned no order_url: %s", raw)
+            raise DimePayError(f"DimePay hosted-page returned no order_url: {raw}")
+        return order_url

@@ -1,3 +1,4 @@
+from django.contrib.sites import requests
 from locale import currency
 import uuid
 from decimal import Decimal
@@ -22,6 +23,16 @@ def _get_or_create_subscription(user):
     return sub
 
 
+def _client_ip(request):
+    """Best-effort extraction of the originating client IP.
+
+    Honors X-Forwarded-For (first hop) when behind a proxy/load balancer,
+    otherwise falls back to REMOTE_ADDR. DimePay requires a valid IP.
+    """
+    xff = request.META.get("HTTP_X_FORWARDED_FOR")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR") or "127.0.0.1"
 @extend_schema(
     tags=["Billing"],
     summary="Get the current user's subscription status",
@@ -126,6 +137,8 @@ class CreatePremiumCheckoutView(APIView):
                 item_name="Excellim Premium (Monthly)",
                 item_description="Unlimited access to all topics & quizzes",
                 currency=currency,
+                ip_address=_client_ip(request),
+                fulfilled=False,
             )
         except DimePayError as exc:
             logger.error("Premium checkout failed for %s: %s", user.email, exc)
@@ -137,9 +150,9 @@ class CreatePremiumCheckoutView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        order_url = result.get("order_url", "")
+        order_url = result  # create_hosted_page now returns the URL string directly
         payment.order_url = order_url
-        payment.raw_response = result
+        payment.raw_response = {"order_url": order_url}
         payment.save()
 
         return Response(
