@@ -53,6 +53,7 @@ class QuestionTakeSerializer(serializers.ModelSerializer):
 class QuizListSerializer(serializers.ModelSerializer):
     question_count = serializers.IntegerField(read_only=True)
     is_premium_required = serializers.SerializerMethodField()
+    is_attempted = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Quiz
@@ -70,6 +71,7 @@ class QuizListSerializer(serializers.ModelSerializer):
             "is_published",
             "created_at",
             "is_premium_required",
+            "is_attempted",
         ]
 
     def get_is_premium_required(self, obj):

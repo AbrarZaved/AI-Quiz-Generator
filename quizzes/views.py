@@ -5,6 +5,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from django.db.models import Exists, OuterRef
+
+from attempts.models import Attempt
 from subscriptions.permissions import FREE_TRIAL_QUIZ_LIMIT
 
 from .models import Question, Quiz
@@ -90,8 +93,19 @@ class QuizViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         qs = Quiz.objects.all().prefetch_related("questions")
+
+        # Flag whether the current user has already attempted each quiz so the
+        # frontend can render an "attempted" badge. Exists() keeps it to a
+        # single query (no N+1) regardless of how many quizzes are returned.
+        if user.is_authenticated:
+            qs = qs.annotate(
+                is_attempted=Exists(
+                    Attempt.objects.filter(quiz=OuterRef("pk"), student=user)
+                )
+            )
+
         if user.is_authenticated and user.is_admin:
-            published = self.request.query_params.get("published")
+            published = self.request.query_params.get("is_published")
             if published is not None:
                 qs = qs.filter(is_published=published.lower() == "true")
             return qs
