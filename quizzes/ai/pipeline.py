@@ -49,7 +49,7 @@ BOOK_CONFIG = {
     "volume2": {
         "toc_json": os.path.join(BOOK_DATA_DIR, "volume2", "content_offset.json"),
         "content_json": os.path.join(
-            BOOK_DATA_DIR, "volume2", "merged_mapped_content_volume 2.json"
+            BOOK_DATA_DIR, "volume2", "volume2_final_metadata_fixed_images.json"
         ),
         "images_dir": os.path.join(BOOK_DATA_DIR, "volume2", "v2images"),
     },
