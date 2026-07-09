@@ -210,6 +210,25 @@ class QuizViewSet(viewsets.ModelViewSet):
         quiz = self.get_object()
         return Response(QuizStatusSerializer(quiz).data)
 
+    @extend_schema(
+        tags=["Quizzes"],
+        summary="[Admin] Quiz counts: total, published, and draft",
+    )
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        """Return aggregate quiz counts for the admin dashboard.
+
+        Draft quizzes are those with ``is_published=False``.
+        """
+        all_qs = Quiz.objects.all()
+        total = all_qs.count()
+        published = all_qs.filter(is_published=True).count()
+        draft = all_qs.filter(is_published=False).count()
+        return Response(
+            {"total": total, "published": published, "draft": draft},
+            status=status.HTTP_200_OK,
+        )
+
     @extend_schema(tags=["Quizzes"], summary="[Admin] Publish a ready quiz so students can see it")
     @action(detail=True, methods=["post"])
     def publish(self, request, pk=None):
