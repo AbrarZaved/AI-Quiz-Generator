@@ -53,7 +53,8 @@ class QuestionTakeSerializer(serializers.ModelSerializer):
 class QuizListSerializer(serializers.ModelSerializer):
     question_count = serializers.IntegerField(read_only=True)
     is_premium_required = serializers.SerializerMethodField()
-    is_attempted = serializers.BooleanField(read_only=True)
+    is_attempted = serializers.BooleanField(read_only=True, default=False)
+    reference_pdf_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
@@ -72,6 +73,7 @@ class QuizListSerializer(serializers.ModelSerializer):
             "created_at",
             "is_premium_required",
             "is_attempted",
+            "reference_pdf_url",
         ]
 
     def get_is_premium_required(self, obj):
@@ -85,6 +87,18 @@ class QuizListSerializer(serializers.ModelSerializer):
         if free_ids is None:
             return False
         return obj.id not in free_ids
+
+    def get_reference_pdf_url(self, obj):
+        """Return the full absolute URL for the reference PDF, or None."""
+        if not obj.reference_pdf:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.reference_pdf.url)
+        # Fallback: use BACKEND_URL from settings when no request in context.
+        from django.conf import settings
+        base = getattr(settings, "BACKEND_URL", "").rstrip("/")
+        return f"{base}{obj.reference_pdf.url}"
 
 
 class QuizSerializer(serializers.ModelSerializer):

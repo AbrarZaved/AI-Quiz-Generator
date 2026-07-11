@@ -118,7 +118,7 @@ class CreatePremiumCheckoutView(APIView):
             amount = Decimal(str(settings.PREMIUM_PRICE_USD))
             currency = "USD"
 
-        order_id = f"SUB-{uuid.uuid4().hex[:12].upper()}"
+        order_id = str(uuid.uuid4())  # DimePay requires a valid UUID format
 
         payment = Payment.objects.create(
             user=user,

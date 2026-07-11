@@ -127,7 +127,8 @@ class SubmitQuizView(APIView):
             .get(pk=attempt.pk)
         )
         return Response(
-            AttemptResultSerializer(attempt).data, status=status.HTTP_201_CREATED
+            AttemptResultSerializer(attempt, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -152,7 +153,7 @@ class QuizResultView(APIView):
                 {"detail": "You have not attempted this quiz yet."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(AttemptResultSerializer(attempt).data)
+        return Response(AttemptResultSerializer(attempt, context={"request": request}).data)
 
 
 @extend_schema(

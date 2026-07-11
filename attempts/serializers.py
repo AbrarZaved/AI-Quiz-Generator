@@ -46,7 +46,7 @@ class AttemptResultSerializer(serializers.ModelSerializer):
     percentage = serializers.FloatField(read_only=True)
     accuracy = serializers.FloatField(source="percentage", read_only=True)
     quiz_title = serializers.CharField(source="quiz.title", read_only=True)
-    reference_pdf = serializers.FileField(source="quiz.reference_pdf", read_only=True)
+    reference_pdf_url = serializers.SerializerMethodField()
     answers = AttemptAnswerResultSerializer(many=True, read_only=True)
 
     class Meta:
@@ -55,7 +55,7 @@ class AttemptResultSerializer(serializers.ModelSerializer):
             "id",
             "quiz",
             "quiz_title",
-            "reference_pdf",
+            "reference_pdf_url",
             "score",
             "total",
             "percentage",
@@ -63,6 +63,18 @@ class AttemptResultSerializer(serializers.ModelSerializer):
             "submitted_at",
             "answers",
         ]
+
+    def get_reference_pdf_url(self, obj):
+        """Return the full absolute URL for the quiz's reference PDF, or None."""
+        pdf = obj.quiz.reference_pdf
+        if not pdf:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(pdf.url)
+        from django.conf import settings
+        base = getattr(settings, "BACKEND_URL", "").rstrip("/")
+        return f"{base}{pdf.url}"
 
 
 class MyAttemptSerializer(serializers.ModelSerializer):
