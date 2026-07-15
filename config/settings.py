@@ -68,8 +68,8 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-# In DEBUG (local dev) use SQLite; otherwise use the Docker PostgreSQL service.
-if DEBUG:
+# In DEBUG (local dev) use SQLite unless USE_POSTGRES is set; otherwise use the Docker PostgreSQL service.
+if DEBUG and not env_bool("USE_POSTGRES", "False"):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",

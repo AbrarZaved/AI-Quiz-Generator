@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-quiz}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quiz}
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "6385:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -36,6 +36,8 @@ services:
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
     ports:
       - "8000:8000"
     env_file:
@@ -46,6 +48,7 @@ services:
       POSTGRES_PORT: 5432
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      USE_POSTGRES: "True"
     depends_on:
       db:
         condition: service_healthy
@@ -57,6 +60,7 @@ services:
     command: celery -A config worker -l info
     volumes:
       - .:/app
+      - media_volume:/app/media
     env_file:
       - .env
     environment:
@@ -64,6 +68,7 @@ services:
       POSTGRES_PORT: 5432
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
+      USE_POSTGRES: "True"
     depends_on:
       db:
         condition: service_healthy
@@ -74,3 +79,5 @@ services:
 
 volumes:
   pgdata:
+  static_volume:
+  media_volume:
