@@ -84,3 +84,37 @@ def send_temp_password_email_task(user_id, temp_password):
     message.attach_alternative(html_body, "text/html")
     message.send(fail_silently=False)
     logger.info("Sent temporary password email to %s", user.email)
+
+
+@shared_task
+def send_contact_email_task(full_name, email, subject, message_content):
+    """Send support/contact email to all active superadmins (superusers)."""
+    User = get_user_model()
+    superadmins = User.objects.filter(is_superuser=True, is_active=True)
+    recipient_list = [admin.email for admin in superadmins if admin.email]
+
+    if not recipient_list:
+        logger.warning("send_contact_email_task: No active superusers found to receive contact email.")
+        return
+
+    email_subject = f"Contact Us Form Submission: {subject}"
+    context = {
+        "full_name": full_name,
+        "email": email,
+        "subject": subject,
+        "message": message_content,
+    }
+
+    html_body = render_to_string("emails/contact_form.html", context)
+    text_body = strip_tags(html_body)
+
+    message = EmailMultiAlternatives(
+        subject=email_subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=recipient_list,
+        reply_to=[email],
+    )
+    message.attach_alternative(html_body, "text/html")
+    message.send(fail_silently=False)
+    logger.info("Sent contact email from %s to superadmins: %s", email, recipient_list)

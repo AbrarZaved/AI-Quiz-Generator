@@ -13,7 +13,8 @@ from .views import (
     VerifyAccountView,
     RegisterStudentView,
     AdminStudentListView,
-    AdminStudentDetailView
+    AdminStudentDetailView,
+    ContactView
 )
 
 
@@ -32,5 +33,6 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="me"),
     path("me/update/", UpdateProfileView.as_view(), name="me-update"),
     path("students/", AdminStudentListView.as_view(), name="admin-student-list"),
-    path("students/<int:pk>/",AdminStudentDetailView.as_view(),name="admin-student-detail",),      
+    path("students/<int:pk>/",AdminStudentDetailView.as_view(),name="admin-student-detail",),
+    path("contact/", ContactView.as_view(), name="contact"),
 ]

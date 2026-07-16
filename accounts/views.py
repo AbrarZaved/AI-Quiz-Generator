@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .tasks import send_otp_email_task, send_temp_password_email_task
+from .tasks import send_otp_email_task, send_temp_password_email_task, send_contact_email_task
 from .models import OTPCode
 from .serializers import (
     ChangePasswordSerializer,
@@ -23,6 +23,7 @@ from .serializers import (
     VerifyAccountSerializer,
     AdminStudentListSerializer,
     AdminStudentDetailSerializer,
+    ContactMessageSerializer,
 )
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
@@ -471,3 +472,28 @@ class AdminStudentDetailView(generics.RetrieveAPIView):
     serializer_class = AdminStudentDetailSerializer
     queryset = User.objects.filter(role=User.Role.STUDENT)
     lookup_field = "pk"
+
+
+@extend_schema(tags=["Contact"])
+class ContactView(generics.GenericAPIView):
+    """POST a message to support / superadmins. Anonymous users are allowed."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = ContactMessageSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        send_contact_email_task.delay(
+            full_name=data["full_name"],
+            email=data["email"],
+            subject=data["subject"],
+            message_content=data["message"],
+        )
+
+        return Response(
+            {"detail": "Your message has been sent successfully."},
+            status=status.HTTP_200_OK,
+        )

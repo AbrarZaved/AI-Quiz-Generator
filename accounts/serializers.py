@@ -464,3 +464,10 @@ class AdminStudentDetailSerializer(serializers.ModelSerializer):
                 + 1
             )
         return StudentQuizAttemptSerializer(attempts, many=True).data
+
+
+class ContactMessageSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255, required=True)
+    email = serializers.EmailField(required=True)
+    subject = serializers.CharField(max_length=255, required=True)
+    message = serializers.CharField(max_length=5000, required=True)

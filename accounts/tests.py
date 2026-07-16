@@ -186,4 +186,66 @@ class SignupVerifyLoginTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
+class ContactMessageTests(APITestCase):
+    def test_contact_message_validation_error(self):
+        # Missing fields should fail
+        res = self.client.post("/api/auth/contact/", {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("full_name", res.data)
+        self.assertIn("email", res.data)
+        self.assertIn("subject", res.data)
+        self.assertIn("message", res.data)
+
+    def test_contact_message_success(self):
+        from django.core.mail import outbox
+
+        # Create active superusers
+        User.objects.create_superuser(
+            email="admin1@example.com",
+            full_name="Admin One",
+            password="adminpassword123",
+        )
+        User.objects.create_superuser(
+            email="admin2@example.com",
+            full_name="Admin Two",
+            password="adminpassword123",
+        )
+        # Create student to ensure they are not included
+        User.objects.create_user(
+            email="student@example.com",
+            full_name="Student",
+            password="studentpassword123",
+        )
+
+        outbox.clear()
+
+        res = self.client.post(
+            "/api/auth/contact/",
+            {
+                "full_name": "John Doe",
+                "email": "johndoe@example.com",
+                "subject": "AI Quiz Generation",
+                "message": "Hello, I have a question about AI quiz generation.",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["detail"], "Your message has been sent successfully.")
+
+        # Check outbox
+        self.assertEqual(len(outbox), 1)
+        email = outbox[0]
+        self.assertEqual(email.subject, "Contact Us Form Submission: AI Quiz Generation")
+        self.assertIn("John Doe", email.body)
+        self.assertIn("johndoe@example.com", email.body)
+        self.assertIn("Hello, I have a question about AI quiz generation.", email.body)
+
+        # Verify recipients are all active superusers
+        self.assertEqual(set(email.to), {"admin1@example.com", "admin2@example.com"})
+
+        # Verify reply_to matches the sender's email
+        self.assertEqual(email.reply_to, ["johndoe@example.com"])
+
+
 
