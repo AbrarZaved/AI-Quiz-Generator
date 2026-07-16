@@ -14,7 +14,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quiz}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quiz} -d ${POSTGRES_DB:-quiz_platform}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,8 +36,8 @@ services:
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
+      - ./staticfiles:/app/staticfiles
+      - ./media:/app/media
     ports:
       - "8000:8000"
     env_file:
@@ -60,7 +60,7 @@ services:
     command: celery -A config worker -l info
     volumes:
       - .:/app
-      - media_volume:/app/media
+      - ./media:/app/media
     env_file:
       - .env
     environment:
@@ -79,5 +79,3 @@ services:
 
 volumes:
   pgdata:
-  static_volume:
-  media_volume:
